@@ -4,7 +4,7 @@
 >
 > 定期对网页截图，自动检测视觉变化，生成时间轴对比报告。
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue)](https://github.com/muyi3919/kina-archive)
+[![Version](https://img.shields.io/badge/version-1.1.0-blue)](https://github.com/muyi3919/kina-archive)
 [![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/muyi3919/kina-archive/blob/main/LICENSE)
 
 ---
@@ -19,18 +19,22 @@
 - [截图对比原理](#截图对比原理)
 - [应用场景](#应用场景)
 - [技术栈](#技术栈)
+- [更新日志](#更新日志)
 - [作者](#作者)
+- [Changelog](#changelog)
 - [License](#license)
 
 ---
 
 ## 功能特性
 
-- **多浏览器支持**：Chrome / Edge / Firefox 自动检测，可指定优先级
+- **多浏览器支持**：Chrome / Edge / Firefox 自动检测，可指定优先级，各浏览器使用独立截图参数
 - **反检测**：模拟真实 User-Agent，绕过基础 Bot 检测
 - **多种对比模式**：像素级 / 感知哈希 / 内容结构
-- **忽略区域**：支持排除动态背景、广告等干扰区域
-- **HTML 报告**：自动生成带时间轴的对比报告
+- **忽略区域**：支持排除动态背景、广告等干扰区域，支持百分比坐标（如 `100%,20%`）
+- **HTML 报告**：自动生成带时间轴的对比报告，图片自动打包到 `report_assets/`，可独立分享
+- **日志系统**：支持 `--verbose` 详细日志和 `--quiet` 静默模式
+- **截图超时**：支持 `--timeout` 自定义超时时间
 - **跨平台**：Windows / macOS / Linux 全支持
 
 ---
@@ -70,6 +74,9 @@ kina-archive snapshot https://kina.ink
 
 # 指定浏览器
 kina-archive snapshot https://kina.ink --browser edge
+
+# 指定超时时间（默认 60 秒）
+kina-archive snapshot https://kina.ink --timeout 120
 ```
 
 ### 对比模式（解决动态背景问题）
@@ -90,8 +97,11 @@ kina-archive snapshot https://kina.ink --mode pixel
 如果你的页面有动态背景图、轮播广告等干扰区域，可以排除：
 
 ```bash
-# 忽略顶部 300px 区域（常见背景图位置）
+# 忽略顶部 300px 区域（绝对像素坐标）
 kina-archive snapshot https://kina.ink --ignore 0,0,1920,300
+
+# 忽略顶部 20% 区域（百分比坐标，适配不同分辨率）
+kina-archive snapshot https://kina.ink --ignore 0,0,100%,20%
 
 # 忽略多个区域（分号分隔）
 kina-archive snapshot https://kina.ink --ignore "0,0,1920,300;0,800,1920,280"
@@ -105,6 +115,22 @@ kina-archive watch https://kina.ink -i 3600 --mode phash
 
 # 监控 10 次后停止
 kina-archive watch https://kina.ink -i 1800 -c 10 --mode phash
+
+# 静默模式（只输出错误）
+kina-archive watch https://kina.ink -i 3600 --quiet
+
+# 详细日志模式
+kina-archive watch https://kina.ink -i 3600 --verbose
+```
+
+### 生成报告
+
+```bash
+# 生成 HTML 报告
+kina-archive report
+
+# 报告会自动将截图和差异图复制到 report_assets/ 目录
+# 将整个目录打包即可独立分享
 ```
 
 ### 其他命令
@@ -114,6 +140,8 @@ kina-archive watch https://kina.ink -i 1800 -c 10 --mode phash
 | `kina-archive history https://kina.ink -l 20` | 查看历史 |
 | `kina-archive report` | 生成报告 |
 | `kina-archive stats` | 查看统计 |
+| `kina-archive --version` | 查看版本 |
+| `kina-archive --help` | 查看帮助 |
 
 ---
 
@@ -169,9 +197,55 @@ kina-archive watch https://kina.ink -i 1800 -c 10 --mode phash
 
 ---
 
+## 更新日志
+
+### v0.1.0
+
+- ✅ 修复 `kina-archive report` 的 `KeyError: 'margin'` 错误
+- ✅ 修复 Firefox/Edge 浏览器截图参数错误（各浏览器使用独立参数）
+- ✅ 支持百分比坐标忽略区域：`--ignore 0,0,100%,20%`
+- ✅ 差异图使用精确时间戳，避免同一天覆盖
+- ✅ 报告自动生成 `report_assets/` 目录，可独立分享
+- ✅ 新增日志系统，支持 `--verbose` / `--quiet` 参数
+- ✅ 新增 `--timeout` 截图超时参数
+- ✅ 新增 `--version` 版本查看
+- ✅ 修复 CI 测试配置
+- ✅ 统一版本号为 0.1.0
+
+---
+
 ## 作者
 
 **kina漫记** · [kina.ink](https://kina.ink)
+
+---
+
+## Changelog
+
+### v1.1.0 (2026-06-25)
+
+**修复：**
+- 修复 `report` 命令 `KeyError: 'margin'` 崩溃
+- 修复 Firefox/Edge 浏览器截图参数错误导致完全失效
+- 修复 diff 图同一天被覆盖的问题
+- 修复 HTML 报告图片路径失效（现自动打包到 `report_assets/`）
+- 修复 CI 测试配置
+- 统一版本号为 1.1.0
+
+**新增：**
+- 日志系统（`--verbose` / `--quiet`）
+- 截图超时参数（`--timeout`）
+- 百分比坐标忽略区域（`--ignore 0,0,100%,20%`）
+- `--version` 查看版本
+- 数据库上下文管理器
+- 更多单元测试
+
+**优化：**
+- 阈值硬编码提取为常量
+- 浏览器截图参数分离
+- setup.py 依赖自动同步
+
+详见 [CHANGELOG.md](CHANGELOG.md)
 
 ---
 

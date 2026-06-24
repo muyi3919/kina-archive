@@ -11,6 +11,13 @@ class ArchiveDB:
         self.conn.row_factory = sqlite3.Row
         self._init_tables()
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        return False
+
     def _init_tables(self):
         self.conn.executescript("""
             CREATE TABLE IF NOT EXISTS snapshots (
@@ -104,4 +111,6 @@ class ArchiveDB:
         return {"total_snapshots": snap["total"], "unique_urls": snap["urls"], "total_changes": ch["total"]}
 
     def close(self):
-        self.conn.close()
+        if self.conn:
+            self.conn.close()
+            self.conn = None

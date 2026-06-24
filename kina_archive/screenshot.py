@@ -2,11 +2,14 @@ import os
 import sys
 import subprocess
 import platform
+import logging
 from pathlib import Path
 from urllib.parse import urlparse
 from datetime import datetime, timedelta
 
 from PIL import Image, ImageDraw, ImageFont
+
+logger = logging.getLogger("kina_archive.screenshot")
 
 
 def _get_system_font():
@@ -54,10 +57,10 @@ BROWSER_CONFIGS = {
     "chrome": {
         "name": "Google Chrome",
         "win_paths": [
-            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-            r"C:\Program Files\Chromium\Application\chrome.exe",
-            os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+            r"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+            r"C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+            r"C:\\Program Files\\Chromium\\Application\\chrome.exe",
+            os.path.expandvars(r"%LOCALAPPDATA%\\Google\\Chrome\\Application\\chrome.exe"),
         ],
         "mac_path": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
         "linux_cmds": ["chromium-browser", "chromium", "google-chrome", "chrome"],
@@ -66,9 +69,9 @@ BROWSER_CONFIGS = {
     "edge": {
         "name": "Microsoft Edge",
         "win_paths": [
-            r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-            r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
-            os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\Edge\Application\msedge.exe"),
+            r"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+            r"C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+            os.path.expandvars(r"%LOCALAPPDATA%\\Microsoft\\Edge\\Application\\msedge.exe"),
         ],
         "mac_path": "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
         "linux_cmds": ["microsoft-edge", "edge"],
@@ -77,9 +80,9 @@ BROWSER_CONFIGS = {
     "firefox": {
         "name": "Mozilla Firefox",
         "win_paths": [
-            r"C:\Program Files\Mozilla Firefox\firefox.exe",
-            r"C:\Program Files (x86)\Mozilla Firefox\firefox.exe",
-            os.path.expandvars(r"%LOCALAPPDATA%\Mozilla Firefox\firefox.exe"),
+            r"C:\\Program Files\\Mozilla Firefox\\firefox.exe",
+            r"C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe",
+            os.path.expandvars(r"%LOCALAPPDATA%\\Mozilla Firefox\\firefox.exe"),
         ],
         "mac_path": "/Applications/Firefox.app/Contents/MacOS/firefox",
         "linux_cmds": ["firefox"],
@@ -88,33 +91,79 @@ BROWSER_CONFIGS = {
 }
 
 
+def _chrome_screenshot_args(cmd, url, filepath, width, height, full_page, user_agent):
+    """Chrome/Edge 截图参数"""
+    args = [
+        cmd,
+        "--headless",
+        "--disable-gpu",
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-extensions",
+        "--disable-software-rasterizer",
+        "--hide-scrollbars",
+        "--disable-blink-features=AutomationControlled",
+        f"--user-agent={user_agent}",
+        f"--window-size={width},{height}",
+        f"--screenshot={filepath}",
+    ]
+    if full_page:
+        args.append("--screenshot-full-page")
+    args.append(url)
+    return args
+
+
+def _firefox_screenshot_args(cmd, url, filepath, width, height, full_page, user_agent):
+    """Firefox 截图参数"""
+    args = [
+        cmd,
+        "--headless",
+        f"--window-size={width},{height}",
+        f"--screenshot={filepath}",
+    ]
+    if full_page:
+        # Firefox 不支持 --screenshot-full-page，用 --window-size 模拟
+        pass
+    args.append(url)
+    return args
+
+
+BROWSER_SCREENSHOT_BUILDERS = {
+    "chrome": _chrome_screenshot_args,
+    "edge": _chrome_screenshot_args,
+    "firefox": _firefox_screenshot_args,
+}
+
+
 class Screenshotter:
-    def __init__(self, output_dir: str = "snapshots", browser: str = None):
+    def __init__(self, output_dir: str = "snapshots", browser: str = None, timeout: int = 60):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
         self.system = platform.system()
         self.browser_info = self._detect_browser(browser)
         self.chrome_cmd = self.browser_info["cmd"] if self.browser_info else None
+        self.timeout = timeout
+        logger.info(f"Screenshotter initialized, browser={self.browser_info['key'] if self.browser_info else None}, timeout={timeout}s")
 
     def _detect_browser(self, preferred: str = None) -> dict:
         """检测可用浏览器，支持指定优先级"""
         system = self.system
 
-        # 如果指定了浏览器，优先检测
         if preferred and preferred in BROWSER_CONFIGS:
             result = self._try_browser(preferred, BROWSER_CONFIGS[preferred])
             if result:
                 return result
+            logger.warning(f"指定的浏览器 {preferred} 未找到，尝试其他浏览器...")
             print(f"⚠️  指定的浏览器 {preferred} 未找到，尝试其他浏览器...")
 
-        # 按优先级尝试所有浏览器
         for key, config in BROWSER_CONFIGS.items():
             if preferred and key == preferred:
-                continue  # 已经试过了
+                continue
             result = self._try_browser(key, config)
             if result:
                 return result
 
+        logger.error("未检测到任何支持的浏览器")
         print("⚠️  未检测到任何支持的浏览器")
         print("   请安装以下浏览器之一:")
         print("   • Google Chrome / Chromium")
@@ -130,9 +179,9 @@ class Screenshotter:
         if system == "Windows":
             for p in config["win_paths"]:
                 if os.path.exists(p):
+                    logger.info(f"检测到 {config['name']}: {p}")
                     print(f"✅ 检测到 {config['name']}: {p}")
                     return {"key": key, "cmd": p, "config": config}
-            # 尝试命令行
             for cmd in [key] + config.get("win_cmds", []):
                 try:
                     result = subprocess.run(
@@ -140,6 +189,7 @@ class Screenshotter:
                         timeout=5, shell=True, encoding="utf-8", errors="ignore"
                     )
                     if result.returncode == 0:
+                        logger.info(f"检测到 {config['name']}: {result.stdout.strip()}")
                         print(f"✅ 检测到 {config['name']}: {result.stdout.strip()}")
                         return {"key": key, "cmd": cmd, "config": config}
                 except:
@@ -147,10 +197,10 @@ class Screenshotter:
 
         elif system == "Darwin":
             if os.path.exists(config["mac_path"]):
+                logger.info(f"检测到 {config['name']}: {config['mac_path']}")
                 print(f"✅ 检测到 {config['name']}: {config['mac_path']}")
                 return {"key": key, "cmd": config["mac_path"], "config": config}
 
-        # Linux 或通用命令检测
         for cmd in config["linux_cmds"]:
             try:
                 result = subprocess.run(
@@ -158,6 +208,7 @@ class Screenshotter:
                     timeout=5, encoding="utf-8", errors="ignore"
                 )
                 if result.returncode == 0:
+                    logger.info(f"检测到 {config['name']}: {result.stdout.strip()}")
                     print(f"✅ 检测到 {config['name']}: {result.stdout.strip()}")
                     return {"key": key, "cmd": cmd, "config": config}
             except (FileNotFoundError, subprocess.TimeoutExpired):
@@ -174,14 +225,20 @@ class Screenshotter:
         filepath = self.output_dir / filename
         filepath_abs = str(filepath.resolve())
 
-        if self.chrome_cmd:
-            self._browser_screenshot(url, filepath_abs, width, height, full_page)
+        if self.browser_info:
+            success = self._browser_screenshot(url, filepath_abs, width, height, full_page)
+            if not success:
+                logger.warning("浏览器截图失败，使用备用方案")
+                print("⚠️  浏览器截图失败，使用备用方案")
+                self._fallback_screenshot(url, filepath)
         else:
+            logger.warning("无可用浏览器，使用备用方案")
+            print("⚠️  无可用浏览器，使用备用方案")
             self._fallback_screenshot(url, filepath)
 
-        # 检查文件是否生成
         if not filepath.exists():
-            print(f"⚠️  浏览器未生成截图，使用备用方案")
+            logger.error("截图未生成，使用备用方案")
+            print("⚠️  截图未生成，使用备用方案")
             self._fallback_screenshot(url, filepath)
 
         with Image.open(filepath) as img:
@@ -189,45 +246,38 @@ class Screenshotter:
         return str(filepath), img_width, img_height
 
     def _browser_screenshot(self, url: str, filepath: str,
-                            width: int, height: int, full_page: bool):
-        """使用浏览器 headless 截图"""
+                            width: int, height: int, full_page: bool) -> bool:
+        """使用浏览器 headless 截图，返回是否成功"""
+        key = self.browser_info["key"]
+        cmd_path = self.browser_info["cmd"]
         user_agent = self.browser_info["config"]["user_agent"]
 
-        cmd = [
-            self.chrome_cmd,
-            "--headless",
-            "--disable-gpu",
-            "--no-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-extensions",
-            "--disable-software-rasterizer",
-            "--hide-scrollbars",
-            "--disable-blink-features=AutomationControlled",
-            f"--user-agent={user_agent}",
-            f"--window-size={width},{height}",
-            f"--screenshot={filepath}",
-            url,
-        ]
+        # 使用浏览器特定的截图参数构建器
+        builder = BROWSER_SCREENSHOT_BUILDERS[key]
+        cmd = builder(cmd_path, url, filepath, width, height, full_page, user_agent)
 
-        if full_page:
-            cmd.insert(1, "--screenshot-full-page")
-
-        # Windows 不用 shell=True，避免路径转义问题
         shell = False
+        logger.info(f"执行截图命令: {cmd[0]} ...")
 
         try:
             result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=60,
+                cmd, capture_output=True, text=True, timeout=self.timeout,
                 shell=shell, encoding="utf-8", errors="ignore"
             )
             if result.returncode != 0 and result.stderr:
                 err = result.stderr.strip()
                 if err:
+                    logger.warning(f"浏览器警告: {err[:200]}")
                     print(f"⚠️  浏览器警告: {err[:200]}")
+            return os.path.exists(filepath) and os.path.getsize(filepath) > 1000
         except subprocess.TimeoutExpired:
-            print("⚠️  截图超时，强制终止")
+            logger.error(f"截图超时 ({self.timeout}s)，强制终止")
+            print(f"⚠️  截图超时 ({self.timeout}s)，强制终止")
+            return False
         except Exception as e:
+            logger.error(f"截图失败: {e}")
             print(f"❌ 截图失败: {e}")
+            return False
 
     def _fallback_screenshot(self, url: str, filepath: Path):
         """备用截图"""
@@ -241,7 +291,7 @@ class Screenshotter:
         draw.text((100, 200), "kina-archive", fill=(233, 69, 96), font=font_large)
         draw.text((100, 300), f"URL: {url}", fill=(200, 200, 200), font=font_mid)
 
-        if self.chrome_cmd:
+        if self.browser_info:
             draw.text((100, 360), "Browser screenshot failed", fill=(255, 100, 100), font=font_mid)
         else:
             draw.text((100, 360), "No browser detected", fill=(255, 100, 100), font=font_mid)
@@ -259,6 +309,7 @@ class Screenshotter:
 
         draw.line([(100, 560), (900, 560)], fill=(15, 52, 96), width=2)
         img.save(filepath)
+        logger.info(f"备用截图已保存: {filepath}")
 
     def cleanup_old(self, days: int = 30):
         """清理旧截图"""
@@ -268,4 +319,5 @@ class Screenshotter:
             if f.stat().st_mtime < cutoff.timestamp():
                 f.unlink()
                 count += 1
+        logger.info(f"清理了 {count} 个旧截图")
         return count

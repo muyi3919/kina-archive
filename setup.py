@@ -3,9 +3,12 @@ from setuptools import setup, find_packages
 with open("README.md", "r", encoding="utf-8") as f:
     long_description = f.read()
 
+with open("requirements.txt", "r", encoding="utf-8") as f:
+    install_requires = [line.strip() for line in f if line.strip() and not line.startswith("#")]
+
 setup(
     name="kina-archive",
-    version="0.1.0",
+    version="1.1.0",
     author="kina漫记",
     author_email="shuzhishaoju@gmail.com",
     description="网页时光机 - 截图对比追踪工具",
@@ -25,10 +28,7 @@ setup(
         "Operating System :: OS Independent",
     ],
     python_requires=">=3.8",
-    install_requires=[
-        "Pillow>=9.0.0",
-        "requests>=2.25.0",
-    ],
+    install_requires=install_requires,
     entry_points={
         "console_scripts": [
             "kina-archive=kina_archive.cli:main",

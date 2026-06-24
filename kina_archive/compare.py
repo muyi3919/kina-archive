@@ -5,6 +5,13 @@ from datetime import datetime
 
 from PIL import Image, ImageDraw, ImageFont
 
+# 阈值常量
+PIXEL_DIFF_THRESHOLD = 30      # 像素级 RGB 差异阈值
+CONTENT_GRAD_THRESHOLD = 20    # 内容结构梯度差异阈值
+PHASH_SIZE = (32, 32)          # 感知哈希缩放尺寸
+SIMILARITY_LOW = 0.2           # 极低相似度警告线
+SIMILARITY_CHANGE = 0.95      # 明显变化检测线
+
 
 def _load_font(size=20, bold=False):
     import platform
@@ -37,6 +44,31 @@ def _load_font(size=20, bold=False):
     return ImageFont.load_default()
 
 
+def _parse_regions(regions_str: str, img_width: int, img_height: int) -> list:
+    """解析忽略区域，支持百分比坐标"""
+    if not regions_str:
+        return None
+    regions = []
+    for part in regions_str.split(";"):
+        coords = []
+        for c in part.split(","):
+            c = c.strip()
+            if c.endswith("%"):
+                val = float(c[:-1]) / 100.0
+                # 根据索引判断是 x/w 还是 y/h
+                if len(coords) in (0, 2):  # x 或 w
+                    ref = img_width if len(coords) == 0 else img_width
+                    coords.append(int(val * ref))
+                else:  # y 或 h
+                    ref = img_height if len(coords) == 1 else img_height
+                    coords.append(int(val * ref))
+            else:
+                coords.append(int(c))
+        if len(coords) == 4:
+            regions.append(tuple(coords))
+    return regions if regions else None
+
+
 class ImageComparator:
     """图片对比器，支持多种对比模式"""
 
@@ -45,7 +77,7 @@ class ImageComparator:
         self.output_dir.mkdir(exist_ok=True)
 
     def compare(self, img1_path: str, img2_path: str, mode: str = "pixel",
-                ignore_regions: list = None) -> tuple:
+                ignore_regions: list = None, img_width: int = None, img_height: int = None) -> tuple:
         """
         对比两张图片
 
@@ -54,10 +86,19 @@ class ImageComparator:
             img2_path: 新图路径
             mode: 对比模式 - "pixel"(像素级) / "phash"(感知哈希) / "content"(内容结构)
             ignore_regions: 忽略区域列表 [(x, y, w, h), ...]
+            img_width: 图片宽度（用于百分比坐标解析）
+            img_height: 图片高度（用于百分比坐标解析）
 
         Returns:
             (similarity, diff_path, pixel_diff_count)
         """
+        # 如果 ignore_regions 是字符串，先解析
+        if isinstance(ignore_regions, str):
+            # 先获取图片尺寸
+            with Image.open(img1_path) as img:
+                w, h = img.size
+            ignore_regions = _parse_regions(ignore_regions, w, h)
+
         if mode == "phash":
             return self._compare_phash(img1_path, img2_path)
         elif mode == "content":
@@ -81,7 +122,7 @@ class ImageComparator:
 
         diff_count = 0
         total = size[0] * size[1]
-        threshold = 30
+        threshold = PIXEL_DIFF_THRESHOLD
 
         # 构建忽略区域掩码
         ignore_mask = set()
@@ -123,7 +164,7 @@ class ImageComparator:
         img2 = Image.open(img2_path).convert("L")
 
         # 缩放到 32x32 计算感知哈希
-        size = (32, 32)
+        size = PHASH_SIZE
         img1 = img1.resize(size, Image.LANCZOS)
         img2 = img2.resize(size, Image.LANCZOS)
 
@@ -171,7 +212,7 @@ class ImageComparator:
 
         diff_count = 0
         total = (size[0] - 1) * (size[1] - 1)
-        threshold = 20
+        threshold = CONTENT_GRAD_THRESHOLD
 
         # 构建忽略区域掩码
         ignore_mask = set()
@@ -219,7 +260,7 @@ class ImageComparator:
         overlay.rectangle([0, 0, size[0], 60], fill=(0, 0, 0))
 
         # 相似度颜色
-        if similarity > 0.95:
+        if similarity > SIMILARITY_CHANGE:
             sim_color = (100, 255, 100)
         elif similarity > 0.9:
             sim_color = (255, 200, 100)
@@ -234,7 +275,7 @@ class ImageComparator:
         overlay.text((650, 8), f"分辨率: {size[0]}x{size[1]}", fill=(200, 200, 200), font=font_small)
 
         # 极低相似度警告
-        if similarity < 0.2:
+        if similarity < SIMILARITY_LOW:
             overlay.rectangle([0, 60, size[0], 110], fill=(80, 0, 0))
             warning_font = _load_font(20, bold=True)
             overlay.text((10, 65), "⚠️  相似度极低，可能是验证码/故障页面", fill=(255, 100, 100), font=warning_font)
@@ -242,9 +283,9 @@ class ImageComparator:
         return img
 
     def _save_diff(self, diff_img: Image, img1_path: str, img2_path: str) -> str:
-        """保存差异图到固定位置，避免不同终端路径问题"""
-        # 使用两个图片的哈希生成固定文件名
-        hash_input = f"{img1_path}|{img2_path}|{datetime.now().strftime('%Y%m%d')}"
+        """保存差异图，使用精确时间戳避免覆盖"""
+        # 使用精确时间戳 + 图片哈希，确保每次对比都有唯一文件名
+        hash_input = f"{img1_path}|{img2_path}|{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
         name_hash = hashlib.md5(hash_input.encode()).hexdigest()[:12]
         diff_name = f"diff_{name_hash}.png"
         diff_path = str(self.output_dir / diff_name)
