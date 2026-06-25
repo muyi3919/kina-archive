@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.1.1] - 2026-06-25
+
+### 修复
+- 修复 `kina-archive --help` 的 `TypeError: not enough arguments for format string` 错误
+- 简化 CLI 字符串处理，避免 argparse 格式化冲突
+
 ## [1.1.0] - 2026-06-25
 
 ### 修复 (Fixed)

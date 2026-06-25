@@ -40,7 +40,13 @@
 
 ## 安装部署
 
-### 安装
+### 从 PyPI 安装（推荐）
+
+```bash
+pip install kina-archive
+```
+
+### 从源码安装
 
 ```bash
 # 克隆仓库
@@ -203,6 +209,12 @@ kina-archive report
 ---
 
 ## 更新日志
+
+### v1.1.1 (2026-06-25)
+
+**修复：**
+- 修复 `kina-archive --help` 的 `TypeError: not enough arguments for format string` 错误
+- 简化 CLI 字符串处理，避免 argparse 格式化冲突
 
 ### v1.1.0 (2026-06-25)
 
