@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as f:
 
 setup(
     name="kina-archive",
-    version="1.1.1",
+    version="1.1.3",
     author="kina漫记",
     author_email="shuzhishaoju@gmail.com",
     description="网页时光机 - 截图对比追踪工具",

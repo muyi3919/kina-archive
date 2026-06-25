@@ -4,7 +4,7 @@
 >
 > 定期对网页截图，自动检测视觉变化，生成时间轴对比报告。
 
-[![Version](https://img.shields.io/badge/version-1.1.0-blue)](https://github.com/muyi3919/kina-archive)
+[![Version](https://img.shields.io/badge/version-1.1.3-blue)](https://github.com/muyi3919/kina-archive)
 [![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/muyi3919/kina-archive/blob/main/LICENSE)
 
 ---
@@ -209,6 +209,23 @@ kina-archive report
 ---
 
 ## 更新日志
+
+### v1.1.3 (2026-06-26)
+
+**修复：**
+- 修复 HTML 报告 CSS 双重转义导致样式失效
+- 修复图片点击放大功能（lightbox）CSS 转义问题
+
+**优化：**
+- 报告模板改为明亮主题设计（毛玻璃卡片、渐变色彩）
+- 截图和 diff 图支持点击全屏预览（ESC 或点击关闭）
+- 引入 Font Awesome 图标增强视觉体验
+
+### v1.1.2 (2026-06-26)
+
+**新增：**
+- 报告模板全新明亮主题设计
+- 图片点击放大（lightbox）功能
 
 ### v1.1.1 (2026-06-25)
 
